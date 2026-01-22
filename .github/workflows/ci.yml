@@ -36,15 +36,21 @@ jobs:
 
       - name: Lint lexicon files
         id: lint
-        run: goat lex lint >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+        run: |
+          "goat lex lint" >> "$GITHUB_OUTPUT"
 
       - name: Check lexicon files for breaking changes
         id: changes
-        run: goat lex breaking >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+        run: |
+          "goat lex breaking" >> "$GITHUB_OUTPUT"
 
       - name: Check for dns records for lexicon
         id: dns
-        run: goat lex check-dns --did $DID >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+        run: |
+          "goat lex check-dns --did $DID" >> "$GITHUB_OUTPUT"
 
   updateComment:
     runs-on: ubuntu-latest

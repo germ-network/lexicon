@@ -19,9 +19,9 @@ jobs:
   check:
     runs-on: ubuntu-latest
     outputs:
-      lint: ${{ steps.lint.outputs }}
-      changes: ${{ steps.changes.outputs }}
-      dns: ${{ steps.dns.outputs }}
+      lint: ${{ steps.lint.outputs.lint }}
+      changes: ${{ steps.changes.outputs.changes }}
+      dns: ${{ steps.dns.outputs.dns }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -42,19 +42,19 @@ jobs:
         id: lint
         continue-on-error: true
         run: |
-          echo "$(goat lex lint)" >> "$GITHUB_OUTPUT"
+          echo "lint=$(goat lex lint)" >> "$GITHUB_OUTPUT"
 
       - name: Check lexicon files for breaking changes
         id: changes
         continue-on-error: true
         run: |
-          echo "$(goat lex breaking)" >> "$GITHUB_OUTPUT"
+          echo "changes=$(goat lex breaking)" >> "$GITHUB_OUTPUT"
 
       - name: Check for dns records for lexicon
         id: dns
         continue-on-error: true
         run: |
-          echo "$(goat lex check-dns --did $DID)" >> "$GITHUB_OUTPUT"
+          echo "dns=$(goat lex check-dns --did $DID)" >> "$GITHUB_OUTPUT"
 
   updateComment:
     runs-on: ubuntu-latest

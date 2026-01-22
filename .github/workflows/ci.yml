@@ -33,8 +33,7 @@ jobs:
 
       - name: Install goat
         run: go install github.com/bluesky-social/goat@latest
-      - run: go env
-      - run: echo $PATH
+
       - name: Print goat version
         run: goat -v
 

@@ -66,28 +66,28 @@ jobs:
             const changes = process.env.CHANGES;
             const dns = process.env.DNS;
 
-            let output = ""
+            let output = []
             if (lint.includes("error")) {
-              output += "## ‼️ Linting Issues"
-              output += lint
+              output.push("## ‼️ Linting Issues")
+              output.push(lint)
             } else {
-              output += "## ✅ Linting"
-              output += lint
+              output.push("## ✅ Linting")
+              output.push(lint)
             }
 
             if (changes.length > 0) {
-              output += "## ‼️ Breaking Changes"
-              output += changes
+              output.push("## ‼️ Breaking Changes")
+              output.push(changes)
             } else {
-              output += "## ✅ No breaking changes"
+              output.push("## ✅ No breaking changes")
             }
 
             if (!dns.includes("successfully")) {
-              output += "## ‼️ DNS Issues"
-              output += dns
+              output.push("## ‼️ DNS Issues")
+              output.push(dns)
             }
 
-            return output
+            return output.join("\n\n")
       - name: Add comment to pull request with results
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

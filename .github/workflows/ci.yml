@@ -115,6 +115,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          PULL: ${{ github.event.pull_request.id }}
+          PULL_REQUEST: ${{ github.event.pull_request.url }}
         run: |
-          gh pr comment $PULL --create-if-none --edit-last --body-file comment.txt --repo $REPO
+          gh pr comment $PULL_REQUEST --create-if-none --edit-last --body-file comment.txt --repo $REPO

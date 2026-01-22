@@ -18,10 +18,6 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    outputs:
-      lint: ${{ steps.lint.outputs.lint }}
-      changes: ${{ steps.changes.outputs.changes }}
-      dns: ${{ steps.dns.outputs.dns }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -38,27 +34,28 @@ jobs:
         run: goat -v
 
       - name: Lint lexicon files
-        id: lint
         continue-on-error: true
         run: |
-          goat lex lint | tee output.txt
-          echo "output=$(cat output.txt)" >> "$GITHUB_OUTPUT"
+          goat lex lint | tee lint.txt
 
       - name: Check lexicon files for breaking changes
-        id: changes
         continue-on-error: true
         run: |
-          goat lex breaking | tee output.txt
-          echo "output=$(cat output.txt)" >> "$GITHUB_OUTPUT"
+          goat lex breaking | tee breaking-changes.txt
 
       - name: Check for dns records for lexicon
-        id: dns
         continue-on-error: true
         env:
           DID: ${{ vars.DID }}
         run: |
-          goat lex check-dns --did $DID | tee output.txt
-          echo "output=$(cat output.txt)" >> "$GITHUB_OUTPUT"
+          goat lex check-dns --did $DID | tee check-dns.txt
+      - uses: actions/upload-artifact@v6
+        with:
+          name: check-logs
+          path: |
+            lint.txt
+            breaking-changes.txt
+            check-dns.txt
 
   updateComment:
     runs-on: ubuntu-latest
@@ -66,43 +63,55 @@ jobs:
     permissions:
       pull-requests: write
     steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: check-logs
+          path: logs
+
+      - run: ls -lR logs
+
       - name: Prepare comment
         uses: actions/github-script@v8
         id: comment
-        env:
-          LINT: ${{ needs.check.outputs.lint }}
-          CHANGES: ${{ needs.check.outputs.changes }}
-          DNS: ${{ needs.check.outputs.dns }}
         with:
           result-encoding: string
           script: |
-            const lint = process.env.LINT;
-            const changes = process.env.CHANGES;
-            const dns = process.env.DNS;
+            import fs from 'node:fs/promise'
+
+            const lint = await fs.readFile('logs/lint.txt', { encoding: "utf-8" }).catch((err) => { return false })
+            const changes = await fs.readFile('logs/breaking-changes.txt', { encoding: "utf-8" }).catch((err) => { return false })
+            const dns = await fs.readFile('logs/check-dns.txt', { encoding: "utf-8" }).catch((err) => { return false })
 
             let output = []
-            if (lint.includes("error")) {
-              output.push("## ‼️ Linting Issues")
-              output.push(lint)
-            } else {
-              output.push("## ✅ Linting")
-              output.push(lint)
+            if (lint) {
+              if (lint.includes("error")) {
+                output.push("## ‼️ Linting Issues")
+                output.push(lint)
+              } else {
+                output.push("## ✅ Linting")
+                output.push(lint)
+              }
             }
 
-            if (changes.length > 0) {
+            if (changes) {
               output.push("## ‼️ Breaking Changes")
               output.push(changes)
             } else {
               output.push("## ✅ No breaking changes")
             }
 
-            if (!dns.includes("successfully")) {
+            if (dns && !dns.includes("successfully")) {
               output.push("## ‼️ DNS Issues")
               output.push(dns)
             }
 
+            if (output.length == 0) {
+              return;
+            }
+
             return output.join("\n\n")
       - name: Add comment to pull request with results
+        if: ${{ steps.comment.outputs.result }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT: ${{ steps.comment.outputs.result }}

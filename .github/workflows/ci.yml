@@ -42,19 +42,24 @@ jobs:
         id: lint
         continue-on-error: true
         run: |
-          echo "lint=$(goat lex lint)" >> "$GITHUB_OUTPUT"
+          goat lex lint | tee output.txt
+          echo "output=$(cat output.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Check lexicon files for breaking changes
         id: changes
         continue-on-error: true
         run: |
-          echo "changes=$(goat lex breaking)" >> "$GITHUB_OUTPUT"
+          goat lex breaking | tee output.txt
+          echo "output=$(cat output.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Check for dns records for lexicon
         id: dns
         continue-on-error: true
+        env:
+          DID: ${{ vars.DID }}
         run: |
-          echo "dns=$(goat lex check-dns --did $DID)" >> "$GITHUB_OUTPUT"
+          goat lex check-dns --did $DID | tee output.txt
+          echo "output=$(cat output.txt)" >> "$GITHUB_OUTPUT"
 
   updateComment:
     runs-on: ubuntu-latest

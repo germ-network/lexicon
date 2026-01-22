@@ -63,6 +63,9 @@ jobs:
     permissions:
       pull-requests: write
     steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
       - uses: actions/download-artifact@v7
         with:
           name: check-logs
@@ -76,7 +79,7 @@ jobs:
         with:
           result-encoding: string
           script: |
-            const fs = require('node:fs/promise')
+            const fs = require('node:fs/promises')
 
             const lint = await fs.readFile('logs/lint.txt', { encoding: "utf-8" }).catch((err) => { return false })
             const changes = await fs.readFile('logs/breaking-changes.txt', { encoding: "utf-8" }).catch((err) => { return false })
@@ -106,7 +109,7 @@ jobs:
             }
 
             if (output.length == 0) {
-              return;
+              return "";
             }
 
             return output.join("\n\n")

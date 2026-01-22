@@ -4,25 +4,35 @@
   "defs": {
     "main": {
       "type": "record",
-      "description": "A delegate messaging id",
+      "description": "A declaration of a Germ Network account",
       "key": "literal:self",
       "record": {
         "type": "object",
         "required": ["version", "currentKey"],
         "properties": {
           "version": {
-            "type": "string"
+            "type": "string",
+            "description": "Semver version number, without pre-release or build information, for the format of opaque content",
+            "maxLength": 100,
+            "minLength": 5
           },
           "currentKey": {
-            "type": "bytes"
+            "type": "bytes",
+            "description": "Opaque value, an ed25519 public key prefixed with a byte enum"
           },
-          "messageMe": { "type": "ref", "ref": "#messageMe" },
+          "messageMe": {
+            "type": "ref",
+            "ref": "#messageMe",
+            "description": "Controls who can message this account"
+          },
           "keyPackage": {
-            "type": "bytes"
+            "type": "bytes",
+            "description": "Opaque value, contains MLS KeyPackage(s), and other signature data, and is signed by the currentKey"
           },
           "continuityProofs": {
             "type": "array",
-            "items": { "type": "bytes" }
+            "items": { "type": "bytes" },
+            "description": "Array of opaque values to allow for key rolling"
           }
         }
       }
@@ -33,11 +43,15 @@
       "properties": {
         "messageMeUrl": {
           "type": "string",
-          "format": "uri"
+          "format": "uri",
+          "description": "A URL to present to an account that does not have its own com.germnetwork.declaration record, must have an empty fragment component, where the app should fill in the fragment component with the DIDs of the two accounts who wish to message each other"
         },
         "showButtonTo": {
           "type": "string",
-          "knownValues": ["usersIFollow", "everyone"]
+          "maxLength": 100,
+          "minLength": 1,
+          "knownValues": ["usersIFollow", "everyone"],
+          "description": "The policy of who can message the account, this value is included in the keyPackage, but is duplicated here to allow applications to decide if they should show a 'Message on Germ' button to the viewer."
         }
       }
     }

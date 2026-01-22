@@ -109,9 +109,9 @@ jobs:
 
             await fs.writeFile('comment.txt', output.join("\n\n"), { encoding: 'utf8' })
 
-            console.log({ comment: output.length != 0 });
+      - name: Print comment
+        run: cat comment.txt
       - name: Add comment to pull request with results
-        if: ${{ steps.comment.outputs.result.comment }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}

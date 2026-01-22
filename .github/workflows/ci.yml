@@ -77,7 +77,6 @@ jobs:
         uses: actions/github-script@v8
         id: comment
         with:
-          result-encoding: string
           script: |
             const fs = require('node:fs/promises')
 

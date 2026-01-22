@@ -1,0 +1,98 @@
+name: Validate lexicon
+
+on:
+  pull_request_target:
+    paths:
+      - "lexicons/**"
+      - ".github/workflows/ci.yml"
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      lint: ${{ steps.lint.outputs }}
+      changes: ${{ steps.changes.outputs }}
+      dns: ${{ steps.dns.outputs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ">=1.25"
+
+      - name: Install goat
+        run: go install github.com/bluesky-social/goat@latest
+
+      - name: Lint lexicon files
+        id: lint
+        run: goat lex lint >> "$GITHUB_OUTPUT"
+
+      - name: Check lexicon files for breaking changes
+        id: changes
+        run: goat lex breaking >> "$GITHUB_OUTPUT"
+
+      - name: Check for dns records for lexicon
+        id: dns
+        run: goat lex check-dns --did $DID >> "$GITHUB_OUTPUT"
+
+  updateComment:
+    runs-on: ubuntu-latest
+    needs: check
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Prepare comment
+        uses: actions/github-script@v8
+        id: comment
+        env:
+          LINT: ${{ needs.check.outputs.lint }}
+          CHANGES: ${{ needs.check.outputs.changes }}
+          DNS: ${{ needs.check.outputs.dns }}
+        with:
+          result-encoding: string
+          script: |
+            const lint = process.env.LINT;
+            const changes = process.env.CHANGES;
+            const dns = process.env.DNS;
+
+            let output = ""
+            if (lint.includes("error")) {
+              output += "## ‼️ Linting Issues"
+              output += lint
+            } else {
+              output += "## ✅ Linting"
+              output += lint
+            }
+
+            if (changes.length > 0) {
+              output += "## ‼️ Breaking Changes"
+              output += changes
+            } else {
+              output += "## ✅ No breaking changes"
+            }
+
+            if (!dns.includes("successfully")) {
+              output += "## ‼️ DNS Issues"
+              output += dns
+            }
+
+            return output
+      - name: Add comment to pull request with results
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT: ${{ steps.comment.outputs.result }}
+          REPO: ${{ github.repository }}
+          PULL: ${{ github.event.pull_request.id }}
+        run: |
+          gh pr comment $PULL --create-if-none --edit-last --body $COMMENT --repo $REPO

@@ -81,9 +81,9 @@ jobs:
           script: |
             const fs = require('node:fs/promises')
 
-            const lint = await fs.readFile('logs/lint.txt', { encoding: "utf-8" }).catch((err) => { return false })
-            const changes = await fs.readFile('logs/breaking-changes.txt', { encoding: "utf-8" }).catch((err) => { return false })
-            const dns = await fs.readFile('logs/check-dns.txt', { encoding: "utf-8" }).catch((err) => { return false })
+            const lint = await fs.readFile('logs/lint.txt', { encoding: "utf8" }).catch((err) => { return false })
+            const changes = await fs.readFile('logs/breaking-changes.txt', { encoding: "utf8" }).catch((err) => { return false })
+            const dns = await fs.readFile('logs/check-dns.txt', { encoding: "utf8" }).catch((err) => { return false })
 
             let output = []
             if (lint) {
@@ -108,17 +108,14 @@ jobs:
               output.push(dns)
             }
 
-            if (output.length == 0) {
-              return "";
-            }
+            await fs.writeFile('comment.txt', output.join("\n\n"), { encoding: 'utf8' })
 
-            return output.join("\n\n")
+            return { comment: output.length != 0 };
       - name: Add comment to pull request with results
-        if: ${{ steps.comment.outputs.result }}
+        if: ${{ steps.comment.outputs.result.comment }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COMMENT: ${{ steps.comment.outputs.result }}
           REPO: ${{ github.repository }}
           PULL: ${{ github.event.pull_request.id }}
         run: |
-          gh pr comment $PULL --create-if-none --edit-last --body $COMMENT --repo $REPO
+          gh pr comment $PULL --create-if-none --edit-last --body-file comment.txt --repo $REPO

@@ -36,13 +36,22 @@ jobs:
         continue-on-error: false
         run: goat -v
 
+      - run: mkdir -p logs
+
       # We capture stderr here too, so we can detect if linting failed:
       - name: Lint lexicon files
         id: lint
+        run: |
+          goat lex lint --json | jq --slurp | tee logs/lint.json
+
+      - name: Check for lint errors
+        id: lint-errors
         continue-on-error: true
         run: |
-          set -eo pipefail
-          goat lex lint 2>&1 | tee lint.txt
+          hasErrors=$(jq 'any(."lint-level" | contains("error"))' logs/lint.json)
+          if [ "$hasErrors" = "true" ]; then
+            exit 1
+          fi
 
       # We capture stderr here too, as warnings can be issues:
       - name: Check lexicon files for breaking changes
@@ -50,7 +59,7 @@ jobs:
         continue-on-error: true
         run: |
           set -eo pipefail
-          goat lex breaking 2>&1 | tee breaking-changes.txt
+          goat lex breaking 2>&1 | tee logs/breaking-changes.txt
 
       - name: Check for dns records for lexicon
         id: dns
@@ -59,20 +68,17 @@ jobs:
           DID: ${{ vars.DID }}
         run: |
           set -eo pipefail
-          goat lex check-dns --did $DID | tee check-dns.txt
+          goat lex check-dns --did $DID | tee logs/check-dns.txt
 
       - name: Upload check results
         if: success() || failure()
         uses: actions/upload-artifact@v6
         with:
           name: check-logs
-          path: |
-            lint.txt
-            breaking-changes.txt
-            check-dns.txt
+          path: logs
 
       - name: Report on failures
-        if: steps.lint.outcome != 'success' || steps.breaking.outcome != 'success' || steps.dns.outcome != 'success'
+        if: steps.lint-errors.outcome != 'success' || steps.breaking.outcome != 'success' || steps.dns.outcome != 'success'
         run: exit 1
 
   updateComment:
@@ -109,17 +115,42 @@ jobs:
 
             let output = []
 
-            const lint = await fs.readFile('logs/lint.txt', { encoding: "utf8" }).catch((err) => { return false })
+            const lint = await fs.readFile('logs/lint.json', { encoding: "utf8" }).then((text) => JSON.parse(text)).catch((err) => { return [] })
             const changes = await fs.readFile('logs/breaking-changes.txt', { encoding: "utf8" }).catch((err) => { return false })
             const dns = await fs.readFile('logs/check-dns.txt', { encoding: "utf8" }).catch((err) => { return false })
 
-            if (lint) {
-              if (lint.includes("error")) {
-                output.push("## ‼️ Linting Issues")
-                output.push(`<pre>${lint}</pre>`)
+            if (lint.length) {
+              const errors = lint.filter((check) => check["lint-level"] === 'error')
+              const warnings = lint.filter((check) => check["lint-level"] === 'warn')
+
+              if (errors.length) {
+                output.push("## ‼️ Linting Errors")
+              } else if (warnings.length) {
+                output.push("## 🟡 Linting Warnings")
               } else {
                 output.push("## ✅ Linting")
-                output.push(`<pre>${lint}</pre>`)
+              }
+
+              if (errors.length || warnings.length) {
+                const lintOutput = []
+                
+                if (errors.length) {
+                  lintOutput.push('**Errors:**')
+                  errors.each((check) => {
+                    lintOutput.push(`* \`${check.nsid}\`: ${check['lint-description']} in \`${check['file-path']}\``)
+                  })
+                }
+
+                if (warnings.length) {
+                  lintOutput.push('**Warnings:**')
+                  warnings.each((check) => {
+                    lintOutput.push(`* \`${check.nsid}\`: ${check['lint-description']} in \`${check['file-path']}\``)
+                  })
+                }
+
+                output.push(lintOutput.join('\n'))
+              } else {
+                output.push('No linting issues found.')
               }
             }
 

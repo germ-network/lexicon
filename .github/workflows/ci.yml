@@ -33,15 +33,17 @@ jobs:
       - name: Print goat version
         run: goat -v
 
+      # We capture stderr here too, so we can detect if linting failed:
       - name: Lint lexicon files
         continue-on-error: true
         run: |
-          goat lex lint | tee lint.txt
+          goat lex lint 2>&1 | tee lint.txt
 
+      # We capture stderr here too, as warnings can be issues:
       - name: Check lexicon files for breaking changes
         continue-on-error: true
         run: |
-          goat lex breaking | tee breaking-changes.txt
+          goat lex breaking 2>&1 | tee breaking-changes.txt
 
       - name: Check for dns records for lexicon
         continue-on-error: true
@@ -88,23 +90,24 @@ jobs:
             if (lint) {
               if (lint.includes("error")) {
                 output.push("## ‼️ Linting Issues")
-                output.push(lint)
+                output.push(`<pre>${lint}</pre>`)
               } else {
                 output.push("## ✅ Linting")
-                output.push(lint)
+                output.push(`<pre>${lint}</pre>`)
               }
             }
 
             if (changes) {
               output.push("## ‼️ Breaking Changes")
-              output.push(changes)
+              output.push(`<pre>${changes}</pre>`)
             } else {
-              output.push("## ✅ No breaking changes")
+              output.push("## ✅ breaking changes")
+              output.push("No breaking changes were detected.")
             }
 
             if (dns && !dns.includes("successfully")) {
               output.push("## ‼️ DNS Issues")
-              output.push(dns)
+              output.push(`<pre>${dns}</pre>`)
             }
 
             await fs.writeFile('comment.txt', output.join("\n\n"), { encoding: 'utf8' })

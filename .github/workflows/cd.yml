@@ -1,0 +1,53 @@
+name: Deploy lexicon
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lexicons/**"
+      - ".github/workflows/cd.yml"
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install goat
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download --repo bluesky-social/goat --pattern 'goat_Linux_x86_64.tar.gz' --output 'goat.tar.gz'
+          tar -xzf goat.tar.gz --directory /usr/local/bin
+          chmod +x /usr/local/bin/goat
+
+      - name: Print goat version
+        continue-on-error: false
+        run: goat -v
+
+      - name: Login to goat
+        env:
+          USERNAME: ${{ vars.USERNAME }}
+          PASSWORD: ${{ secrets.APP_PASSWORD }}
+        run: goat account login -u $USERNAME -p $PASSWORD
+
+      - name: Check authentication for Goat
+        run: goat account check-auth
+
+      - name: Publish lexicon update
+        run: goat lex publish -u
+
+      # We always want to attempt to logout of goat.
+      - name: Logout of goat
+        if: success() || failure()
+        run: goat account logout

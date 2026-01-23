@@ -18,17 +18,13 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    outputs:
+      finished: ${{ steps.lint.outcome == 'success' || steps.lint.outcome == 'failure' || steps.breaking.outcome == 'success' || steps.breaking.outcome == 'failure' || steps.breaking.outcome == 'success' || steps.breaking.outcome == 'failure' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # - name: Set up Go
-      #   uses: actions/setup-go@v6
-      #   with:
-      #     go-version: ">=1.25"
-
       - name: Install goat
-        # run: go install github.com/bluesky-social/goat@latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -37,6 +33,7 @@ jobs:
           chmod +x /usr/local/bin/goat
 
       - name: Print goat version
+        continue-on-error: false
         run: goat -v
 
       # We capture stderr here too, so we can detect if linting failed:
@@ -81,7 +78,6 @@ jobs:
   updateComment:
     runs-on: ubuntu-latest
     needs: check
-    if: success() || failure()
     permissions:
       pull-requests: write
     steps:
@@ -98,15 +94,22 @@ jobs:
       - name: Prepare comment
         uses: actions/github-script@v8
         id: comment
+        env:
+          VALIDATED: ${{ needs.check.outputs.finished }}
         with:
           script: |
             const fs = require('node:fs/promises')
+
+            const validated = process.env.VALIDATED === 'true'
+            if (!validated) {
+              await fs.writeFile('comment.txt', "## ‼️ Error: Workflow failed to run completely", { encoding: 'utf8' })
+              return;
+            }
 
             const lint = await fs.readFile('logs/lint.txt', { encoding: "utf8" }).catch((err) => { return false })
             const changes = await fs.readFile('logs/breaking-changes.txt', { encoding: "utf8" }).catch((err) => { return false })
             const dns = await fs.readFile('logs/check-dns.txt', { encoding: "utf8" }).catch((err) => { return false })
 
-            let output = []
             if (lint) {
               if (lint.includes("error")) {
                 output.push("## ‼️ Linting Issues")

@@ -112,10 +112,15 @@ jobs:
             }
 
             if (changes) {
-              output.push("## ‼️ Breaking Changes")
-              output.push(`<pre>${changes}</pre>`)
+              if(changes.includes('error')) {
+                output.push("## ‼️ Incompatible Changes")
+                output.push(`<pre>${changes}</pre>`)
+              } else {
+                output.push("## 🟡 Incompatible Changes")
+                output.push("<details><summary>Received non-error output:</summary><pre>${changes}</pre></details>")
+              }
             } else {
-              output.push("## ✅ breaking changes")
+              output.push("## ✅ Incompatible Changes")
               output.push("No breaking changes were detected.")
             }
 

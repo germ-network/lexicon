@@ -105,74 +105,9 @@ jobs:
           VALIDATED: ${{ needs.check.outputs.finished }}
         with:
           script: |
-            const fs = require('node:fs/promises')
-
-            const validated = process.env.VALIDATED === 'true'
-            if (!validated) {
-              await fs.writeFile('comment.txt', "## ‼️ Error: Workflow failed to run completely", { encoding: 'utf8' })
-              return;
-            }
-
-            let output = []
-
-            const lint = await fs.readFile('logs/lint.json', { encoding: "utf8" }).then((text) => JSON.parse(text)).catch((err) => { return [] })
-            const changes = await fs.readFile('logs/breaking-changes.txt', { encoding: "utf8" }).catch((err) => { return false })
-            const dns = await fs.readFile('logs/check-dns.txt', { encoding: "utf8" }).catch((err) => { return false })
-
-            if (lint.length) {
-              const errors = lint.filter((check) => check["lint-level"] === 'error')
-              const warnings = lint.filter((check) => check["lint-level"] === 'warn')
-
-              if (errors.length) {
-                output.push("## ‼️ Linting Errors")
-              } else if (warnings.length) {
-                output.push("## 🟡 Linting Warnings")
-              } else {
-                output.push("## ✅ Linting")
-              }
-
-              if (errors.length || warnings.length) {
-                const lintOutput = []
-                
-                if (errors.length) {
-                  lintOutput.push('**Errors:**')
-                  errors.each((check) => {
-                    lintOutput.push(`* \`${check.nsid}\`: ${check['lint-description']} in \`${check['file-path']}\``)
-                  })
-                }
-
-                if (warnings.length) {
-                  lintOutput.push('**Warnings:**')
-                  warnings.each((check) => {
-                    lintOutput.push(`* \`${check.nsid}\`: ${check['lint-description']} in \`${check['file-path']}\``)
-                  })
-                }
-
-                output.push(lintOutput.join('\n'))
-              } else {
-                output.push('No linting issues found.')
-              }
-            }
-
-            if (changes) {
-              if(changes.includes('error')) {
-                output.push("## ‼️ Incompatible Changes")
-                output.push(`<pre>${changes}</pre>`)
-              } else {
-                output.push("## 🟡 Incompatible Changes")
-                output.push(`<details><summary>Received non-error output:</summary><pre>${changes}</pre></details>`)
-              }
-            } else {
-              output.push("## ✅ Incompatible Changes")
-              output.push("No breaking changes were detected.")
-            }
-
-            if (dns && !dns.includes("successfully")) {
-              output.push("## ‼️ DNS Issues")
-              output.push(`<pre>${dns}</pre>`)
-            }
-
-            await fs.writeFile('comment.txt', output.join("\n\n"), { encoding: 'utf8' })
+            const formatComment = require('./scripts/format-comment.js')
+            const comment = await formatComment()
+            await fs.writeFile("comment.txt", comment, { encoding: "utf8" });
 
       - name: Print comment
         run: cat comment.txt

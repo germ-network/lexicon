@@ -1,5 +1,35 @@
 const fs = require("node:fs/promises");
 
+/**
+ *
+ * @param {*} checks
+ * @returns {Map<string, { nsid: string, "lint-description": string }[]>}
+ */
+function groupChecksByFile(checks) {
+  return checks.reduce((byFile, check) => {
+    const filePath = check["file-path"];
+    const checks = byFile.get(filePath) ?? [];
+
+    byFile.set(filePath, checks.concat(check));
+
+    return byFile;
+  }, new Map());
+}
+
+function formatChecks(checks) {
+  const checksByFile = groupChecksByFile(checks);
+  const output = [];
+
+  for (let [file, checks] of checksByFile) {
+    output.push(`* File: \`${file}\``);
+    for (let check of checks) {
+      output.push(`  * \`${check.nsid}\`: ${check["lint-description"]}`);
+    }
+  }
+
+  return output.join("\n");
+}
+
 async function formatComment() {
   const validated = process.env.VALIDATED === "true";
   if (process.env.CI && !validated) {
@@ -42,22 +72,14 @@ async function formatComment() {
 
       if (errors.length) {
         lintOutput.push("### Errors:\n");
-        errors.forEach((check) => {
-          lintOutput.push(
-            `* \`${check.nsid}\`: ${check["lint-description"]} in \`${check["file-path"]}\``,
-          );
-        });
+        lintOutput.push(formatChecks(errors));
 
         if (warnings.length) lintOutput.push("\n");
       }
 
       if (warnings.length) {
         lintOutput.push("### Warnings:\n");
-        warnings.forEach((check) => {
-          lintOutput.push(
-            `* \`${check.nsid}\`: ${check["lint-description"]} in \`${check["file-path"]}\``,
-          );
-        });
+        lintOutput.push(formatChecks(warnings));
       }
 
       output.push(lintOutput.join("\n"));

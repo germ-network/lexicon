@@ -22,13 +22,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: ">=1.25"
+      # - name: Set up Go
+      #   uses: actions/setup-go@v6
+      #   with:
+      #     go-version: ">=1.25"
 
       - name: Install goat
-        run: go install github.com/bluesky-social/goat@latest
+        # run: go install github.com/bluesky-social/goat@latest
+        run: |
+          gh release download --repo bluesky-social/goat --pattern 'goat_Linux_x86_64.tar.gz' --output 'goat.tar.gz'
+          tar -xzf goat.tar.gz --directory /usr/local/bin
+          chmod +x /usr/local/bin/goat
 
       - name: Print goat version
         run: goat -v

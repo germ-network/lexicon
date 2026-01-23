@@ -1,0 +1,7 @@
+ 🟡 lexicons/com/germnetwork/declaration.json
+    [unlimited-bytes]: no max length
+    [unlimited-bytes]: no max length
+    [unlimited-string]: no max length
+    [unlimited-bytes]: no max length
+    [unlimited-string]: no max length
+error: linting issues detected

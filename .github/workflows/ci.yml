@@ -35,23 +35,32 @@ jobs:
 
       # We capture stderr here too, so we can detect if linting failed:
       - name: Lint lexicon files
+        id: lint
         continue-on-error: true
         run: |
+          set -eo pipefail
           goat lex lint 2>&1 | tee lint.txt
 
       # We capture stderr here too, as warnings can be issues:
       - name: Check lexicon files for breaking changes
+        id: breaking
         continue-on-error: true
         run: |
+          set -eo pipefail
           goat lex breaking 2>&1 | tee breaking-changes.txt
 
       - name: Check for dns records for lexicon
+        id: dns
         continue-on-error: true
         env:
           DID: ${{ vars.DID }}
         run: |
+          set -eo pipefail
           goat lex check-dns --did $DID | tee check-dns.txt
-      - uses: actions/upload-artifact@v6
+
+      - name: Upload check results
+        if: success() || failure()
+        uses: actions/upload-artifact@v6
         with:
           name: check-logs
           path: |
@@ -59,9 +68,14 @@ jobs:
             breaking-changes.txt
             check-dns.txt
 
+      - name: Report on failures
+        if: steps.lint.outcome != 'success' || steps.breaking.outcome != 'success' || steps.dns.outcome != 'success'
+        run: exit 1
+
   updateComment:
     runs-on: ubuntu-latest
     needs: check
+    if: success() || failure()
     permissions:
       pull-requests: write
     steps:

@@ -35,7 +35,7 @@ jobs:
         continue-on-error: false
         run: goat -v
 
-      - name: authenticate goat
+      - name: Login to goat
         env:
           USERNAME: ${{ vars.USERNAME }}
           PASSWORD: ${{ secrets.APP_PASSWORD }}
@@ -46,3 +46,8 @@ jobs:
 
       - name: Publish lexicon update
         run: goat lex publish -u
+
+      # We always want to attempt to logout of goat.
+      - name: Logout of goat
+        if: success() || failure()
+        run: goat account logout

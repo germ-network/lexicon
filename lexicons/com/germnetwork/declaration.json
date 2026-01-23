@@ -13,7 +13,7 @@
           "version": {
             "type": "string",
             "description": "Semver version number, without pre-release or build information, for the format of opaque content",
-            "maxLength": 100,
+            "maxLength": 14,
             "minLength": 5
           },
           "currentKey": {

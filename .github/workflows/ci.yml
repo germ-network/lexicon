@@ -110,6 +110,7 @@ jobs:
           VALIDATED: ${{ needs.check.outputs.finished }}
         with:
           script: |
+            const fs = require("node:fs/promises");
             const formatComment = require('./scripts/format-comment.js')
             const comment = await formatComment()
             await fs.writeFile("comment.txt", comment, { encoding: "utf8" });

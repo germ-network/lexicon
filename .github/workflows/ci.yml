@@ -101,8 +101,6 @@ jobs:
 
       - run: ls -R logs
 
-      - run: ls -R .
-
       - name: Prepare comment
         uses: actions/github-script@v8
         id: comment

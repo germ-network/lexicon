@@ -78,6 +78,7 @@ jobs:
   updateComment:
     runs-on: ubuntu-latest
     needs: check
+    if: success() || failure()
     permissions:
       pull-requests: write
     steps:

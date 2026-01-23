@@ -14,7 +14,8 @@
             "type": "string",
             "description": "Semver version number, without pre-release or build information, for the format of opaque content",
             "minLength": 5,
-            "maxLength": 14
+            "maxLength": 14,
+            "maxGraphemes": 14
           },
           "currentKey": {
             "type": "bytes",
@@ -46,12 +47,14 @@
           "format": "uri",
           "minLength": 1,
           "maxLength": 2047,
+          "maxGraphemes": 2047,
           "description": "A URL to present to an account that does not have its own com.germnetwork.declaration record, must have an empty fragment component, where the app should fill in the fragment component with the DIDs of the two accounts who wish to message each other"
         },
         "showButtonTo": {
           "type": "string",
           "minLength": 1,
           "maxLength": 100,
+          "maxGraphemes": 100,
           "knownValues": ["usersIFollow", "everyone"],
           "description": "The policy of who can message the account, this value is included in the keyPackage, but is duplicated here to allow applications to decide if they should show a 'Message on Germ' button to the viewer."
         }

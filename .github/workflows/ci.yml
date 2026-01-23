@@ -107,6 +107,8 @@ jobs:
               return;
             }
 
+            let output = []
+
             const lint = await fs.readFile('logs/lint.txt', { encoding: "utf8" }).catch((err) => { return false })
             const changes = await fs.readFile('logs/breaking-changes.txt', { encoding: "utf8" }).catch((err) => { return false })
             const dns = await fs.readFile('logs/check-dns.txt', { encoding: "utf8" }).catch((err) => { return false })

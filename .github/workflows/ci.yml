@@ -126,7 +126,7 @@ jobs:
                 output.push(`<pre>${changes}</pre>`)
               } else {
                 output.push("## 🟡 Incompatible Changes")
-                output.push("<details><summary>Received non-error output:</summary><pre>${changes}</pre></details>")
+                output.push(`<details><summary>Received non-error output:</summary><pre>${changes}</pre></details>`)
               }
             } else {
               output.push("## ✅ Incompatible Changes")

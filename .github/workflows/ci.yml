@@ -68,7 +68,7 @@ jobs:
           DID: ${{ vars.DID }}
         run: |
           set -eo pipefail
-          goat lex check-dns --did $DID | tee logs/check-dns.txt
+          goat lex check-dns --example-did $DID | tee logs/check-dns.txt
 
       - name: Upload check results
         if: success() || failure()

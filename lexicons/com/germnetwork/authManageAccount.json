@@ -1,0 +1,22 @@
+{
+  "lexicon": 1,
+  "id": "com.germnetwork.authManageAccount",
+  "defs": {
+    "main": {
+      "type": "permission-set",
+      "title": "Manage your Germ Network account",
+      "detail": "Allows managing your Germ Network account, including who can message you",
+      "permissions": [
+        {
+          "type": "permission",
+          "resource": "repo",
+          "collection": [
+            "com.germnetwork.declaration",
+            "com.germnetwork.keypackage"
+          ],
+          "action": ["create", "update", "delete"]
+        }
+      ]
+    }
+  }
+}

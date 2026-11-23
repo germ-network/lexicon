@@ -78,7 +78,7 @@ jobs:
         if: success() || failure()
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          FINISHED: ${{ steps.lint.outcome == 'success' || steps.lint.outcome == 'failure' || steps.breaking.outcome == 'success' || steps.breaking.outcome == 'failure' || steps.breaking.outcome == 'success' || steps.breaking.outcome == 'failure' }}
+          FINISHED: ${{ (steps.lint.outcome == 'success' || steps.lint.outcome == 'failure') && (steps.breaking.outcome == 'success' || steps.breaking.outcome == 'failure') && (steps.dns.outcome == 'success' || steps.dns.outcome == 'failure') }}
         run: |
           mkdir -p logs
           jq -n --argjson pr "$PR_NUMBER" --argjson finished "$FINISHED" '{pr: $pr, finished: $finished}' > logs/meta.json

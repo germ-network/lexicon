@@ -182,3 +182,17 @@ jobs:
           PULL_REQUEST: ${{ needs.gather.outputs.number }}
         run: |
           gh pr comment "$PULL_REQUEST" --create-if-none --edit-last --body-file comment.txt --repo "$REPO"
+
+      # If anything above failed, replace the in-progress comment so the PR
+      # isn't left showing ⏳. Uses only trusted data: gather's PR number and
+      # the github context. Nothing from the artifact. The job still fails.
+      - name: Report comment workflow failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PULL_REQUEST: ${{ needs.gather.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh pr comment "$PULL_REQUEST" --create-if-none --edit-last --repo "$REPO" \
+            --body "## ‼️ Couldn't report validation results"$'\n\n'"See the [comment workflow run]($RUN_URL) for details."

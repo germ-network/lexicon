@@ -1,0 +1,91 @@
+name: Comment lexicon results
+
+# Runs in the context of the default branch with a write token, after the
+# "Validate lexicon" workflow (ci.yml) completes for a pull request. No code
+# from the pull request runs here: the only input taken from the PR run is the
+# `check-logs` artifact, and everything in it is treated as untrusted data.
+on:
+  workflow_run:
+    workflows: ["Validate lexicon"]
+    types: [completed]
+
+# Only the latest results per branch matter, so a newer run replaces an older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    permissions:
+      pull-requests: write
+      actions: read
+    steps:
+      # SECURITY: never check out the PR head here (no `ref:` override). This
+      # job holds a write token; the default checkout is the trusted default
+      # branch, so scripts/format-comment.js is the reviewed version.
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+
+      - name: Download check results
+        uses: actions/download-artifact@v7
+        with:
+          name: check-logs
+          path: logs
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - run: ls -R logs
+
+      # The artifact is untrusted. Validate its metadata here and pass it on
+      # only through step outputs and env vars, never via `${{ }}` in `run:`.
+      - name: Validate artifact metadata
+        id: meta
+        run: |
+          if [ ! -f logs/pr-number ]; then
+            echo "::error::logs/pr-number is missing from the artifact"
+            exit 1
+          fi
+          pr_number="$(head -c 32 logs/pr-number | tr -d '\n')"
+          if [[ ! "$pr_number" =~ ^[0-9]+$ ]]; then
+            echo "::error::logs/pr-number is not a valid pull request number"
+            exit 1
+          fi
+
+          validated=false
+          if [ -f logs/finished ] && [ "$(head -c 32 logs/finished | tr -d '\n')" = "true" ]; then
+            validated=true
+          fi
+
+          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "validated=$validated" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare comment
+        uses: actions/github-script@v8
+        id: comment
+        env:
+          VALIDATED: ${{ steps.meta.outputs.validated }}
+        with:
+          script: |
+            const fs = require("node:fs/promises");
+            const formatComment = require('./scripts/format-comment.js')
+            const comment = await formatComment()
+            await fs.writeFile("comment.txt", comment, { encoding: "utf8" });
+
+      - name: Print comment
+        run: cat comment.txt
+
+      - name: Add comment to pull request with results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PULL_REQUEST: ${{ steps.meta.outputs.pr_number }}
+        run: |
+          gh pr comment "$PULL_REQUEST" --create-if-none --edit-last --body-file comment.txt --repo "$REPO"

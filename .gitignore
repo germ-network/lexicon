@@ -1,1 +1,7 @@
 logs/
+
+# Claude Code: machine-local state only. Shared project config
+# (.claude/settings.json, agents/, commands/, skills/) stays committable.
+.claude/worktrees/
+.claude/.cc-writes
+.claude/settings.local.json

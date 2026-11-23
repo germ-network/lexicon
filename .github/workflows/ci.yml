@@ -53,13 +53,14 @@ jobs:
             exit 1
           fi
 
-      # We capture stderr here too, as warnings can be issues:
+      # Structured JSON output (one object per issue, slurped into an array);
+      # stderr log lines are intentionally not captured in the file.
       - name: Check lexicon files for breaking changes
         id: breaking
         continue-on-error: true
         run: |
           set -eo pipefail
-          goat lex breaking 2>&1 | tee logs/breaking-changes.txt
+          goat lex breaking --json | jq --slurp | tee logs/breaking.json
 
       - name: Check for dns records for lexicon
         id: dns

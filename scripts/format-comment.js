@@ -30,6 +30,31 @@ function formatChecks(checks) {
   return output.join("\n");
 }
 
+/**
+ * Breaking-change issues usually have no "file-path", so group by nsid.
+ *
+ * @param {{ nsid: string, message: string }[]} changes
+ * @returns {string}
+ */
+function formatChanges(changes) {
+  const changesByNsid = changes.reduce((byNsid, change) => {
+    const nsidChanges = byNsid.get(change.nsid) ?? [];
+
+    byNsid.set(change.nsid, nsidChanges.concat(change));
+
+    return byNsid;
+  }, new Map());
+  const output = [];
+
+  for (let [nsid, nsidChanges] of changesByNsid) {
+    for (let change of nsidChanges) {
+      output.push(`* \`${nsid}\`: ${change.message}`);
+    }
+  }
+
+  return output.join("\n");
+}
+
 async function formatComment() {
   const validated = process.env.VALIDATED === "true";
   if (process.env.CI && !validated) {
@@ -45,9 +70,11 @@ async function formatComment() {
       return [];
     });
   const changes = await fs
-    .readFile("logs/breaking-changes.txt", { encoding: "utf8" })
+    .readFile("logs/breaking.json", { encoding: "utf8" })
+    .then((text) => JSON.parse(text))
+    .then((parsed) => (Array.isArray(parsed) ? parsed : []))
     .catch((err) => {
-      return "";
+      return [];
     });
   const dns = await fs
     .readFile("logs/check-dns.txt", { encoding: "utf8" })
@@ -88,16 +115,13 @@ async function formatComment() {
     }
   }
 
-  if (changes) {
-    if (changes.includes("error")) {
-      output.push("## ‼️ Incompatible Changes");
-      output.push(`<pre>${changes}</pre>`);
-    } else {
-      output.push("## 🟡 Incompatible Changes");
-      output.push(
-        `<details><summary>Received non-error output:</summary><pre>${changes}</pre></details>`,
-      );
-    }
+  if (changes.length) {
+    const hasErrors = changes.some((change) => change["lint-level"] === "error");
+
+    output.push(
+      hasErrors ? "## ‼️ Incompatible Changes" : "## 🟡 Incompatible Changes",
+    );
+    output.push(formatChanges(changes));
   } else {
     output.push("## ✅ Incompatible Changes");
     output.push("No breaking changes were detected.");

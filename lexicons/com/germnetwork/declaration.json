@@ -8,13 +8,18 @@
       "key": "literal:self",
       "record": {
         "type": "object",
-        "required": ["version", "currentKey"],
+        "required": ["version", "currentKey", "keyPackage"],
         "properties": {
           "version": {
             "type": "string",
             "description": "Semver version number, without pre-release or build information, for the format of opaque content",
             "minLength": 5,
-            "maxLength": 14
+            "maxLength": 10
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When this declaration was last updated"
           },
           "currentKey": {
             "type": "bytes",
@@ -55,6 +60,11 @@
           "maxLength": 100,
           "knownValues": ["none", "usersIFollow", "everyone"],
           "description": "The policy of who can message the account, this value is included in the keyPackage, but is duplicated here to allow applications to decide if they should show a 'Message on Germ' button to the viewer."
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Optional note shown alongside the 'Message on Germ' button"
         }
       }
     }

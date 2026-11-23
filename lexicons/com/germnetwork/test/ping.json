@@ -1,0 +1,21 @@
+{
+  "lexicon": 1,
+  "id": "com.germnetwork.test.ping",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Test record under a new NSID authority (test.germnetwork.com) with no _lexicon DNS record, to exercise the DNS check",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["createdAt"],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

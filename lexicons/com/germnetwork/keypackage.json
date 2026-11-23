@@ -1,0 +1,26 @@
+{
+  "lexicon": 1,
+  "id": "com.germnetwork.keypackage",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A published MLS KeyPackage for a Germ Network account",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["keyPackage", "createdAt"],
+        "properties": {
+          "keyPackage": {
+            "type": "bytes",
+            "description": "Opaque value, an MLS KeyPackage signed by the account's currentKey"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When this KeyPackage was published"
+          }
+        }
+      }
+    }
+  }
+}

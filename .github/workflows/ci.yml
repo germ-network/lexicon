@@ -1,10 +1,10 @@
 name: Validate lexicon
 
+# Runs on every pull request (no `paths` filter) so the `changes` and `check`
+# jobs can be required status checks: a workflow that never starts leaves a
+# required check pending forever, but a job skipped by `if:` counts as passed.
 on:
   pull_request:
-    paths:
-      - "lexicons/**"
-      - ".github/workflows/ci.yml"
 
 # Allow only one concurrent check run per pull request. A newer push cancels the
 # in-progress run, since only the checks for the latest commit matter.
@@ -16,8 +16,56 @@ permissions:
   contents: read
 
 jobs:
+  # Decides whether the lexicon checks need to run. When nothing relevant
+  # changed, it uploads a `check-logs` artifact marked `skipped` so comment.yml
+  # can report that instead of an incomplete run.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      lexicons: ${{ steps.diff.outputs.lexicons }}
+      # JSON array of {filename, status} for the PR's lexicons/**/*.json files.
+      lexicon-files: ${{ steps.diff.outputs.lexicon-files }}
+    steps:
+      - name: Check for lexicon changes
+        id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -eo pipefail
+          files="$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" \
+            --jq '.[] | {filename, status}' | jq -sc '.')"
+
+          if jq -e 'any(.[].filename; test("^(lexicons/|\\.github/workflows/ci\\.yml$)"))' <<<"$files" >/dev/null; then
+            echo "lexicons=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "lexicons=false" >> "$GITHUB_OUTPUT"
+          fi
+          # `jq -c` keeps this on one line, even if a filename contains a newline.
+          echo "lexicon-files=$(jq -c '[.[] | select(.filename | test("^lexicons/.*\\.json$"))]' <<<"$files")" >> "$GITHUB_OUTPUT"
+
+      - name: Record skipped run for comment workflow
+        if: steps.diff.outputs.lexicons == 'false'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p logs
+          jq -n --argjson pr "$PR_NUMBER" '{pr: $pr, finished: true, skipped: true}' > logs/meta.json
+
+      - name: Upload skipped-run metadata
+        if: steps.diff.outputs.lexicons == 'false'
+        uses: actions/upload-artifact@v6
+        with:
+          name: check-logs
+          path: logs
+
   check:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.lexicons == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -69,6 +117,31 @@ jobs:
         run: |
           set -eo pipefail
           goat lex check-dns --example-did $DID | tee logs/check-dns.txt
+
+      # Informational only: doesn't affect `finished` or the job result.
+      # `goat lex status` has no JSON output, so the raw text is saved and
+      # format-comment.js parses it. Given specific files, goat still lists other
+      # published lexicons in the same group (as remote-only), so we also record
+      # which NSIDs this PR touched for format-comment.js to filter on.
+      - name: Check publish status of changed lexicons
+        id: status
+        continue-on-error: true
+        env:
+          LEXICON_FILES: ${{ needs.changes.outputs.lexicon-files }}
+        run: |
+          set -eo pipefail
+          # NUL-delimited so unusual filenames survive intact.
+          mapfile -d '' files < <(jq -j '.[] | select(.status != "removed") | .filename + "\u0000"' <<<"$LEXICON_FILES")
+
+          nsids='[]'
+          if [ "${#files[@]}" -gt 0 ]; then
+            nsids="$(jq -s '[.[].id]' "${files[@]}")"
+            goat lex status "${files[@]}" | tee logs/status.txt
+          fi
+
+          jq -n --argjson nsids "$nsids" --argjson files "$LEXICON_FILES" \
+            '{nsids: $nsids, removed: [$files[] | select(.status == "removed") | .filename]}' \
+            > logs/lexicon-changes.json
 
       # Hand the PR number and completion flag to the privileged comment
       # workflow (comment.yml) via the artifact. This workflow runs without a

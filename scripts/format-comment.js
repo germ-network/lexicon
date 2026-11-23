@@ -55,6 +55,107 @@ function formatChanges(changes) {
   return output.join("\n");
 }
 
+// NSIDs come from untrusted PR files, so only render well-formed ones.
+const NSID_PATTERN = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+
+// `goat lex status` prints one " <icon> <nsid>" line per lexicon.
+const STATUS_LINE = /^\s*(\S+)\s+(\S+)\s*$/u;
+const STATUS_BY_ICON = {
+  "🟢": "unchanged",
+  "🟣": "changed",
+  "🟠": "new",
+  "⭕": "remote-only",
+};
+
+/**
+ * Parse `goat lex status` output into a Map of nsid -> status. Returns null if
+ * any non-empty line isn't in the expected format, so callers can say the
+ * status couldn't be determined instead of guessing.
+ *
+ * @param {string} text
+ * @returns {Map<string, string> | null}
+ */
+function parseStatus(text) {
+  const statuses = new Map();
+
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+
+    const match = STATUS_LINE.exec(line);
+    const status = match && STATUS_BY_ICON[match[1]];
+    if (!status || !NSID_PATTERN.test(match[2])) return null;
+
+    statuses.set(match[2], status);
+  }
+
+  return statuses;
+}
+
+/**
+ * "lexicons/com/example/foo.json" -> "com.example.foo"
+ *
+ * @param {string} path
+ * @returns {string | null}
+ */
+function nsidFromPath(path) {
+  const match = /^lexicons\/(.+)\.json$/.exec(path);
+  const nsid = match && match[1].split("/").join(".");
+
+  return nsid && NSID_PATTERN.test(nsid) ? nsid : null;
+}
+
+/**
+ * The "Lexicon Changes" section, or null if the PR touched no lexicon files.
+ *
+ * @param {{ nsids: unknown[], removed: unknown[] }} lexiconChanges
+ * @param {string | null} statusText
+ * @returns {string | null}
+ */
+function formatLexiconChanges(lexiconChanges, statusText) {
+  const nsids = lexiconChanges.nsids.filter(
+    (nsid) => typeof nsid === "string" && NSID_PATTERN.test(nsid),
+  );
+  const removed = lexiconChanges.removed
+    .filter((path) => typeof path === "string")
+    .map(nsidFromPath)
+    .filter(Boolean);
+
+  if (!nsids.length && !removed.length) return null;
+
+  const output = ["## 📝 Lexicon Changes"];
+  const list = (title, items) => {
+    if (!items.length) return;
+    output.push(`**${title}**`);
+    output.push(items.map((nsid) => `* \`${nsid}\``).join("\n"));
+  };
+
+  if (nsids.length) {
+    const statuses = statusText === null ? null : parseStatus(statusText);
+
+    if (statuses === null) {
+      output.push(
+        "Couldn't determine the publish status of the changed lexicons. Check the workflow logs.",
+      );
+      list("Changed in this PR", nsids);
+    } else {
+      // Only report NSIDs this PR touched; goat also lists other published
+      // lexicons in the same group.
+      const byStatus = (status) =>
+        nsids.filter((nsid) => statuses.get(nsid) === status);
+      const unknown = nsids.filter((nsid) => !statuses.has(nsid));
+
+      list("🟠 New (not yet published)", byStatus("new"));
+      list("🟣 Changed (differs from published)", byStatus("changed"));
+      list("🟢 Unchanged (matches published)", byStatus("unchanged"));
+      list("Status unknown", unknown);
+    }
+  }
+
+  list("🗑️ Removed in this PR", removed);
+
+  return output.join("\n\n");
+}
+
 async function formatComment() {
   const validated = process.env.VALIDATED === "true";
   if (process.env.CI && !validated) {
@@ -88,6 +189,26 @@ async function formatComment() {
     .catch((err) => {
       return "";
     });
+  const lexiconChanges = await fs
+    .readFile("logs/lexicon-changes.json", { encoding: "utf8" })
+    .then((text) => JSON.parse(text))
+    .then((parsed) => ({
+      nsids: Array.isArray(parsed?.nsids) ? parsed.nsids : [],
+      removed: Array.isArray(parsed?.removed) ? parsed.removed : [],
+    }))
+    .catch((err) => {
+      return { nsids: [], removed: [] };
+    });
+  const statusText = await fs
+    .readFile("logs/status.txt", { encoding: "utf8" })
+    .catch((err) => {
+      return null;
+    });
+
+  const lexiconSection = formatLexiconChanges(lexiconChanges, statusText);
+  if (lexiconSection) {
+    output.push(lexiconSection);
+  }
 
   if (lint.length) {
     const errors = lint.filter((check) => check["lint-level"] === "error");

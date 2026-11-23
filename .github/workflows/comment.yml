@@ -125,8 +125,9 @@ jobs:
 
       # The artifact is untrusted. Validate its metadata here and pass it on
       # only through step outputs and env vars, never via `${{ }}` in `run:`.
-      # The PR number comes from `gather`; the artifact's copy must match it.
-      # If the artifact couldn't be downloaded, nothing from it is used:
+      # The PR number used for commenting always comes from `gather`; the
+      # artifact's `pr` is only checked for consistency with it. If the
+      # artifact couldn't be downloaded, nothing from it is used:
       # `validated=false` makes format-comment.js post an error comment.
       - name: Validate artifact metadata
         id: meta
@@ -144,18 +145,11 @@ jobs:
             echo "::error::logs/meta.json is missing from the artifact"
             exit 1
           fi
-          # `.pr` must be a positive integer; anything else yields no output.
-          if ! artifact_pr="$(jq -r '.pr | select(type == "number" and . == floor and . > 0)' logs/meta.json)" \
-            || [ -z "$artifact_pr" ]; then
-            echo "::error::logs/meta.json is not valid JSON or has no valid pull request number"
-            exit 1
-          fi
-          if [[ ! "$artifact_pr" =~ ^[0-9]+$ ]]; then
-            echo "::error::logs/meta.json has an invalid pull request number"
-            exit 1
-          fi
-          if [ "$artifact_pr" != "$EXPECTED_PR" ]; then
-            echo "::error::Artifact is for pull request #$artifact_pr, but this run belongs to #$EXPECTED_PR"
+          # Consistency check: the artifact must be for the PR `gather` found.
+          # Not the security boundary; the comment always goes to `gather`'s PR.
+          # Fails on invalid JSON, a missing `.pr`, or any other value.
+          if ! jq -e --argjson pr "$EXPECTED_PR" '.pr == $pr' logs/meta.json >/dev/null; then
+            echo "::error::logs/meta.json is invalid or is for a different pull request"
             exit 1
           fi
 

@@ -18,8 +18,6 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    outputs:
-      finished: ${{ steps.lint.outcome == 'success' || steps.lint.outcome == 'failure' || steps.breaking.outcome == 'success' || steps.breaking.outcome == 'failure' || steps.breaking.outcome == 'success' || steps.breaking.outcome == 'failure' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -73,8 +71,8 @@ jobs:
       # Hand the PR number and completion flag to the privileged comment
       # workflow (comment.yml) via the artifact. This workflow runs without a
       # write token, so it cannot comment on the pull request itself.
-      # FINISHED must stay identical to `jobs.check.outputs.finished` above
-      # (job outputs can't be read from within the same job).
+      # FINISHED records whether the checks ran to completion; comment.yml
+      # only reports results when it is exactly "true".
       - name: Record metadata for comment workflow
         if: success() || failure()
         env:

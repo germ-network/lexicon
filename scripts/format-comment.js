@@ -244,10 +244,17 @@ async function formatComment() {
   }
 
   if (changes.length) {
-    const hasErrors = changes.some((change) => change["lint-level"] === "error");
+    const hasErrors = changes.some(
+      (change) => change["lint-level"] === "error",
+    );
 
     output.push(
       hasErrors ? "## ‼️ Incompatible Changes" : "## 🟡 Incompatible Changes",
+    );
+    output.push(
+      hasErrors
+        ? "These changes aren't backwards compatible with the published lexicons: records that are valid today could become invalid, and existing clients may reject new records. Published lexicons should only change in backwards compatible ways, like adding optional fields. For a breaking change, publish a new NSID instead (for example `com.example.fooV2`)."
+        : "These changes may not be backwards compatible with the published lexicons. Check that existing records and clients will still work with them.",
     );
     output.push(formatChanges(changes));
   } else if (breakingExitCode !== null) {
@@ -266,7 +273,7 @@ async function formatComment() {
   }
 
   if (dns && !dns.includes("successfully")) {
-    output.push("## ‼️ DNS Errors");
+    output.push("## ❌ DNS Errors");
     output.push(`<pre>${dns}</pre>`);
   } else {
     output.push("## ✅ DNS");

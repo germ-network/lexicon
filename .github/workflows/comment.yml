@@ -107,7 +107,12 @@ jobs:
         with:
           node-version: "24.x"
 
+      # If the artifact is missing (e.g. CI failed before uploading it), keep
+      # going so the in-progress comment is replaced with an error instead of
+      # being left behind. The metadata step below handles that case.
       - name: Download check results
+        id: download
+        continue-on-error: true
         uses: actions/download-artifact@v7
         with:
           name: check-logs
@@ -115,16 +120,26 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
-      - run: ls -R logs
+      - if: steps.download.outcome == 'success'
+        run: ls -R logs
 
       # The artifact is untrusted. Validate its metadata here and pass it on
       # only through step outputs and env vars, never via `${{ }}` in `run:`.
       # The PR number comes from `gather`; the artifact's copy must match it.
+      # If the artifact couldn't be downloaded, nothing from it is used:
+      # `validated=false` makes format-comment.js post an error comment.
       - name: Validate artifact metadata
         id: meta
         env:
           EXPECTED_PR: ${{ needs.gather.outputs.number }}
+          DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
         run: |
+          if [ "$DOWNLOAD_OUTCOME" != "success" ]; then
+            echo "::warning::The check-logs artifact was unavailable; reporting the run as incomplete."
+            echo "validated=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ ! -f logs/pr-number ]; then
             echo "::error::logs/pr-number is missing from the artifact"
             exit 1

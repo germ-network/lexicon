@@ -1,0 +1,198 @@
+name: Comment lexicon results
+
+# Runs in the context of the default branch with a write token, when the
+# "Validate lexicon" workflow (ci.yml) starts and finishes for a pull request.
+# No code from the pull request runs here. The pull request is looked up from
+# trusted event data via the API; the `check-logs` artifact produced by the PR
+# run is treated as untrusted data.
+#
+# Jobs:
+# - gather:      finds the open PR whose head is the checked commit (read-only).
+# - in-progress: on `requested`, marks the PR comment as in progress.
+# - publish:     on `completed`, posts the results from the artifact.
+#
+# Concurrency is set only on the two commenting jobs, not on the workflow or on
+# `gather`. Only the latest state per PR branch matters, so a newer commenting
+# job replaces an older one. A job skipped by its `if:` (a cancelled,
+# superseded run, or a run where `gather` found no matching PR) never joins the
+# group, so it can't cancel the newer push's commenting job.
+on:
+  workflow_run:
+    workflows: ["Validate lexicon"]
+    types: [requested, completed]
+
+permissions: {}
+
+jobs:
+  gather:
+    runs-on: ubuntu-latest
+    # A cancelled run has been superseded by a newer one, which will comment.
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      !(github.event.action == 'completed' && github.event.workflow_run.conclusion == 'cancelled')
+    permissions:
+      pull-requests: read
+    outputs:
+      found: ${{ steps.pr.outputs.found }}
+      number: ${{ steps.pr.outputs.number }}
+    steps:
+      # Find the open PR whose head is exactly the commit being checked. If the
+      # PR has moved on to a newer commit, there's nothing to report.
+      - name: Find pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -o pipefail
+          if [ -z "$HEAD_OWNER" ] || [ -z "$HEAD_BRANCH" ]; then
+            echo "::notice::Head repository or branch is unavailable; not commenting."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          pr_number="$(gh api --method GET "repos/$REPO/pulls" \
+            -f head="$HEAD_OWNER:$HEAD_BRANCH" -f state=open \
+            | jq -r --arg sha "$HEAD_SHA" 'map(select(.head.sha == $sha)) | first | .number // empty')"
+          if [ -z "$pr_number" ]; then
+            echo "::notice::No open pull request has $HEAD_SHA as its head (superseded by a newer push?); not commenting."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ ! "$pr_number" =~ ^[0-9]+$ ]]; then
+            echo "::error::Unexpected pull request number from the API"
+            exit 1
+          fi
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+
+  in-progress:
+    runs-on: ubuntu-latest
+    needs: gather
+    if: needs.gather.outputs.found == 'true' && github.event.action == 'requested'
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: true
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Mark pull request results as in progress
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PULL_REQUEST: ${{ needs.gather.outputs.number }}
+        run: |
+          gh pr comment "$PULL_REQUEST" --create-if-none --edit-last --body "## ⏳ Validation in progress" --repo "$REPO"
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: gather
+    if: needs.gather.outputs.found == 'true' && github.event.action == 'completed'
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: true
+    permissions:
+      pull-requests: write
+      actions: read
+    steps:
+      # SECURITY: never check out the PR head here (no `ref:` override). This
+      # job holds a write token; the default checkout is the trusted default
+      # branch, so scripts/format-comment.js is the reviewed version.
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+
+      # If the artifact is missing (e.g. CI failed before uploading it), keep
+      # going so the in-progress comment is replaced with an error instead of
+      # being left behind. The metadata step below handles that case.
+      - name: Download check results
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v7
+        with:
+          name: check-logs
+          path: logs
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - if: steps.download.outcome == 'success'
+        run: ls -R logs
+
+      # The artifact is untrusted. Validate its metadata here and pass it on
+      # only through step outputs and env vars, never via `${{ }}` in `run:`.
+      # The PR number used for commenting always comes from `gather`; the
+      # artifact's `pr` is only checked for consistency with it. If the
+      # artifact couldn't be downloaded, nothing from it is used:
+      # `validated=false` makes format-comment.js post an error comment.
+      - name: Validate artifact metadata
+        id: meta
+        env:
+          EXPECTED_PR: ${{ needs.gather.outputs.number }}
+          DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
+        run: |
+          if [ "$DOWNLOAD_OUTCOME" != "success" ]; then
+            echo "::warning::The check-logs artifact was unavailable; reporting the run as incomplete."
+            echo "validated=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ ! -f logs/meta.json ]; then
+            echo "::error::logs/meta.json is missing from the artifact"
+            exit 1
+          fi
+          # Consistency check: the artifact must be for the PR `gather` found.
+          # Not the security boundary; the comment always goes to `gather`'s PR.
+          # Fails on invalid JSON, a missing `.pr`, or any other value.
+          if ! jq -e --argjson pr "$EXPECTED_PR" '.pr == $pr' logs/meta.json >/dev/null; then
+            echo "::error::logs/meta.json is invalid or is for a different pull request"
+            exit 1
+          fi
+
+          validated=false
+          if jq -e '.finished == true' logs/meta.json >/dev/null; then
+            validated=true
+          fi
+
+          echo "validated=$validated" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare comment
+        uses: actions/github-script@v8
+        id: comment
+        env:
+          VALIDATED: ${{ steps.meta.outputs.validated }}
+        with:
+          script: |
+            const fs = require("node:fs/promises");
+            const formatComment = require('./scripts/format-comment.js')
+            const comment = await formatComment()
+            await fs.writeFile("comment.txt", comment, { encoding: "utf8" });
+
+      - name: Print comment
+        run: cat comment.txt
+
+      - name: Add comment to pull request with results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PULL_REQUEST: ${{ needs.gather.outputs.number }}
+        run: |
+          gh pr comment "$PULL_REQUEST" --create-if-none --edit-last --body-file comment.txt --repo "$REPO"
+
+      # If anything above failed, replace the in-progress comment so the PR
+      # isn't left showing ⏳. Uses only trusted data: gather's PR number and
+      # the github context. Nothing from the artifact. The job still fails.
+      - name: Report comment workflow failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PULL_REQUEST: ${{ needs.gather.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh pr comment "$PULL_REQUEST" --create-if-none --edit-last --repo "$REPO" \
+            --body "## ‼️ Couldn't report validation results"$'\n\n'"See the [comment workflow run]($RUN_URL) for details."

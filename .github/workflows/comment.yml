@@ -140,13 +140,18 @@ jobs:
             exit 0
           fi
 
-          if [ ! -f logs/pr-number ]; then
-            echo "::error::logs/pr-number is missing from the artifact"
+          if [ ! -f logs/meta.json ]; then
+            echo "::error::logs/meta.json is missing from the artifact"
             exit 1
           fi
-          artifact_pr="$(head -c 32 logs/pr-number | tr -d '\n')"
+          # `.pr` must be a positive integer; anything else yields no output.
+          if ! artifact_pr="$(jq -r '.pr | select(type == "number" and . == floor and . > 0)' logs/meta.json)" \
+            || [ -z "$artifact_pr" ]; then
+            echo "::error::logs/meta.json is not valid JSON or has no valid pull request number"
+            exit 1
+          fi
           if [[ ! "$artifact_pr" =~ ^[0-9]+$ ]]; then
-            echo "::error::logs/pr-number is not a valid pull request number"
+            echo "::error::logs/meta.json has an invalid pull request number"
             exit 1
           fi
           if [ "$artifact_pr" != "$EXPECTED_PR" ]; then
@@ -155,7 +160,7 @@ jobs:
           fi
 
           validated=false
-          if [ -f logs/finished ] && [ "$(head -c 32 logs/finished | tr -d '\n')" = "true" ]; then
+          if jq -e '.finished == true' logs/meta.json >/dev/null; then
             validated=true
           fi
 

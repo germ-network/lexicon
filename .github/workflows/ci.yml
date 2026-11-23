@@ -71,8 +71,9 @@ jobs:
       # Hand the PR number and completion flag to the privileged comment
       # workflow (comment.yml) via the artifact. This workflow runs without a
       # write token, so it cannot comment on the pull request itself.
+      # Both go into logs/meta.json as `{"pr": <number>, "finished": <bool>}`.
       # FINISHED records whether the checks ran to completion; comment.yml
-      # only reports results when it is exactly "true".
+      # only reports results when `finished` is exactly `true`.
       - name: Record metadata for comment workflow
         if: success() || failure()
         env:
@@ -80,8 +81,7 @@ jobs:
           FINISHED: ${{ steps.lint.outcome == 'success' || steps.lint.outcome == 'failure' || steps.breaking.outcome == 'success' || steps.breaking.outcome == 'failure' || steps.breaking.outcome == 'success' || steps.breaking.outcome == 'failure' }}
         run: |
           mkdir -p logs
-          printf '%s\n' "$PR_NUMBER" > logs/pr-number
-          printf '%s\n' "$FINISHED" > logs/finished
+          jq -n --argjson pr "$PR_NUMBER" --argjson finished "$FINISHED" '{pr: $pr, finished: $finished}' > logs/meta.json
 
       - name: Upload check results
         if: success() || failure()

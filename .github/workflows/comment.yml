@@ -9,7 +9,8 @@ name: Comment lexicon results
 # Jobs:
 # - gather:      finds the open PR whose head is the checked commit (read-only).
 # - in-progress: on `requested`, marks the PR comment as in progress.
-# - publish:     on `completed`, posts the results from the artifact.
+# - publish:     on `completed`, posts the results from the artifact, or a
+#                "no lexicon changes" note when ci.yml skipped the checks.
 #
 # Concurrency is set only on the two commenting jobs, not on the workflow or on
 # `gather`. Only the latest state per PR branch matters, so a newer commenting
@@ -158,9 +159,23 @@ jobs:
             validated=true
           fi
 
+          # ci.yml's `changes` job marks runs where no lexicons changed.
+          skipped=false
+          if jq -e '.skipped == true' logs/meta.json >/dev/null; then
+            skipped=true
+          fi
+
           echo "validated=$validated" >> "$GITHUB_OUTPUT"
+          echo "skipped=$skipped" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare skipped comment
+        if: steps.meta.outputs.skipped == 'true'
+        run: |
+          printf '%s\n\n%s\n' "## ✅ No lexicon changes" \
+            "This pull request doesn't change any lexicons, so no lexicon checks were run." > comment.txt
 
       - name: Prepare comment
+        if: steps.meta.outputs.skipped != 'true'
         uses: actions/github-script@v8
         id: comment
         env:

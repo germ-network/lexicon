@@ -1,10 +1,10 @@
 name: Validate lexicon
 
+# Runs on every pull request (no `paths` filter) so the `changes` and `check`
+# jobs can be required status checks: a workflow that never starts leaves a
+# required check pending forever, but a job skipped by `if:` counts as passed.
 on:
   pull_request:
-    paths:
-      - "lexicons/**"
-      - ".github/workflows/ci.yml"
 
 # Allow only one concurrent check run per pull request. A newer push cancels the
 # in-progress run, since only the checks for the latest commit matter.
@@ -16,8 +16,51 @@ permissions:
   contents: read
 
 jobs:
+  # Decides whether the lexicon checks need to run. When nothing relevant
+  # changed, it uploads a `check-logs` artifact marked `skipped` so comment.yml
+  # can report that instead of an incomplete run.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      lexicons: ${{ steps.diff.outputs.lexicons }}
+    steps:
+      - name: Check for lexicon changes
+        id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Read the file list first rather than piping into `grep -q`, which
+          # exits early and would make a pipefail'd `gh` look like a failure.
+          files="$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')"
+          if grep -qE '^(lexicons/|\.github/workflows/ci\.yml$)' <<<"$files"; then
+            echo "lexicons=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "lexicons=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Record skipped run for comment workflow
+        if: steps.diff.outputs.lexicons == 'false'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p logs
+          jq -n --argjson pr "$PR_NUMBER" '{pr: $pr, finished: true, skipped: true}' > logs/meta.json
+
+      - name: Upload skipped-run metadata
+        if: steps.diff.outputs.lexicons == 'false'
+        uses: actions/upload-artifact@v6
+        with:
+          name: check-logs
+          path: logs
+
   check:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.lexicons == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v6

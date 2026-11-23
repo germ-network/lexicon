@@ -76,6 +76,13 @@ async function formatComment() {
     .catch((err) => {
       return [];
     });
+  // Written by the workflow only when the breaking check exited non-zero.
+  const breakingExitCode = await fs
+    .readFile("logs/breaking-exit-code", { encoding: "utf8" })
+    .then((text) => text.trim())
+    .catch((err) => {
+      return null;
+    });
   const dns = await fs
     .readFile("logs/check-dns.txt", { encoding: "utf8" })
     .catch((err) => {
@@ -122,6 +129,16 @@ async function formatComment() {
       hasErrors ? "## ‼️ Incompatible Changes" : "## 🟡 Incompatible Changes",
     );
     output.push(formatChanges(changes));
+  } else if (breakingExitCode !== null) {
+    // The file is untrusted, so only print it if it is purely numeric.
+    const code = /^[0-9]+$/.test(breakingExitCode)
+      ? ` (exit code ${breakingExitCode})`
+      : "";
+
+    output.push("## ‼️ Incompatible Changes");
+    output.push(
+      `The breaking change check failed to run${code}. Check the workflow logs.`,
+    );
   } else {
     output.push("## ✅ Incompatible Changes");
     output.push("No breaking changes were detected.");

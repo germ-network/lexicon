@@ -60,7 +60,8 @@ jobs:
         continue-on-error: true
         run: |
           set -eo pipefail
-          goat lex breaking --json | jq --slurp | tee logs/breaking.json
+          # Record the exit code inside logs/ so a crash isn't mistaken for "no changes".
+          goat lex breaking --json | jq --slurp | tee logs/breaking.json || { code=$?; echo "$code" > logs/breaking-exit-code; exit "$code"; }
 
       - name: Check for dns records for lexicon
         id: dns
